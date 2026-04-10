@@ -145,7 +145,103 @@ def test_xor_wavelet_beats_adam_noisy():
     assert wavelet_solved > adam_solved, \
         f"WaveletAdam ({wavelet_solved}) not better than Adam ({adam_solved})"
     print("test_xor_wavelet_beats_adam_noisy passed")
+    
+def test_visushrink_beats_wavelet_noisy():
+    """VisuShrink has lower final loss than WaveletAdam at σ=0.05."""
+    from experiments.session11_adaptive import run_visuShrink_adam
+    from experiments.session9_neural import run_xor_noisy_wavelet_adam
+    vs, wav = [], []
+    for seed in range(10):
+        h, _ = run_visuShrink_adam(sigma=0.05, n_steps=2000, seed=seed)
+        vs.append(h[-1][1])
+        h, _ = run_xor_noisy_wavelet_adam(0.05, 2000, seed=seed)
+        wav.append(h[-1][1])
+    assert np.mean(vs) < np.mean(wav), \
+        f"VisuShrink ({np.mean(vs):.4f}) not better than WaveletAdam ({np.mean(wav):.4f})"
+    print("test_visushrink_beats_wavelet_noisy passed")
 
+
+def test_ema_visuShrink_beats_visuShrink():
+    """EMAVisuShrink has lower final loss than plain VisuShrink at σ=0.10."""
+    from experiments.session11_adaptive import run_visuShrink_adam, run_ema_visuShrink_adam
+    vs, ema = [], []
+    for seed in range(10):
+        h, _ = run_visuShrink_adam(sigma=0.10, n_steps=2000, seed=seed)
+        vs.append(h[-1][1])
+        h, _ = run_ema_visuShrink_adam(sigma=0.10, n_steps=2000, seed=seed)
+        ema.append(h[-1][1])
+    assert np.mean(ema) < np.mean(vs), \
+        f"EMAVisuShrink ({np.mean(ema):.4f}) not better than VisuShrink ({np.mean(vs):.4f})"
+    print("test_ema_visuShrink_beats_visuShrink passed")
+    
+def test_mnist_visuShrink_not_worse_than_adam():
+    """PerLayerVisuShrink matches or beats Adam test accuracy on MNIST."""
+    from problems.mnist_problem import load_mnist_subset, mnist_loss_and_grads
+    from experiments.session12_mnist import run_adam_mnist, run_perlayer_visuShrink_adam
+
+    X_train, y_train, X_test, y_test = load_mnist_subset(
+        n_train=1000, n_test=200, seed=0
+    )
+    _, p_adam = run_adam_mnist(X_train, y_train, X_test, y_test,
+                                n_epochs=20, seed=0)
+    _, p_vs   = run_perlayer_visuShrink_adam(X_train, y_train, X_test, y_test,
+                                              n_epochs=20, seed=0)
+
+    _, _, acc_adam = mnist_loss_and_grads(p_adam, X_test, y_test)
+    _, _, acc_vs   = mnist_loss_and_grads(p_vs,   X_test, y_test)
+
+    assert acc_vs >= acc_adam - 0.02, \
+        f"VisuShrink ({acc_vs:.3f}) worse than Adam ({acc_adam:.3f}) by more than 2%"
+    print("test_mnist_visuShrink_not_worse_than_adam passed")
+
+def test_learned_threshold_beats_ema_visushrink():
+    """LearnedThreshold has lower loss than EMAVisuShrink at σ=0.10."""
+    from core.learned_threshold_correction import train_correction_model
+    from experiments.session15_learned_denoiser import run_learned_threshold_adam
+    from experiments.session11_adaptive import run_ema_visuShrink_adam
+
+    net, X_mean, X_std = train_correction_model(
+        n_samples=5000, n_epochs=30
+    )
+    lt_losses, ema_losses = [], []
+    for seed in range(5):
+        h, _ = run_learned_threshold_adam(0.10, net, X_mean, X_std,
+                                           n_steps=2000, seed=seed)
+        lt_losses.append(h[-1][1])
+        h, _ = run_ema_visuShrink_adam(0.10, 2000, seed=seed)
+        ema_losses.append(h[-1][1])
+
+    import numpy as np
+    assert np.mean(lt_losses) < np.mean(ema_losses), \
+        f"LearnedThreshold ({np.mean(lt_losses):.4f}) not better than " \
+        f"EMAVisuShrink ({np.mean(ema_losses):.4f})"
+    print("test_learned_threshold_beats_ema_visushrink passed")
+    
+def test_uncertain_threshold_beats_ema_visushrink():
+    """UncertainThreshold has lower loss than EMAVisuShrink at σ=0.10."""
+    from core.uncertain_threshold_correction import (
+        train_uncertain_correction_model, denoise_uncertain_batch
+    )
+    from experiments.session16_uncertainty_aware_denoising import run_uncertain_threshold_adam
+    from experiments.session11_adaptive import run_ema_visuShrink_adam
+    import numpy as np
+
+    unet, uX_mean, uX_std = train_uncertain_correction_model(
+        n_samples=3000, n_epochs=20
+    )
+    ut_losses, ema_losses = [], []
+    for seed in range(5):
+        h, _ = run_uncertain_threshold_adam(
+            0.10, unet, uX_mean, uX_std, n_steps=2000, seed=seed
+        )
+        ut_losses.append(h[-1][1])
+        h, _ = run_ema_visuShrink_adam(0.10, 2000, seed=seed)
+        ema_losses.append(h[-1][1])
+
+    assert np.mean(ut_losses) < np.mean(ema_losses), \
+        f"UncertainThreshold ({np.mean(ut_losses):.4f}) not better than " \
+        f"EMAVisuShrink ({np.mean(ema_losses):.4f})"
+    print("test_uncertain_threshold_beats_ema_visushrink passed")
 
 if __name__ == "__main__":
     test_sgd_decreases_loss()
@@ -158,4 +254,9 @@ if __name__ == "__main__":
     test_wavelet_adam_noise_robust()
     test_xor_adam_solves_clean()
     test_xor_wavelet_beats_adam_noisy()
+    test_visushrink_beats_wavelet_noisy()
+    test_ema_visuShrink_beats_visuShrink()
+    test_mnist_visuShrink_not_worse_than_adam()
+    test_learned_threshold_beats_ema_visushrink()
+    test_uncertain_threshold_beats_ema_visushrink()
     print("\nAll optimizer tests passed.")

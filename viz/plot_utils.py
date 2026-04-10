@@ -24,15 +24,18 @@ def plot_convergence(histories, labels, title="Convergence", filename="convergen
 
     colors = ['#00ff88', '#ff6b35', '#4ecdc4', '#ffe66d', '#a8dadc']
 
+    eps = 1e-8  # small epsilon to avoid log(0)
     for i, (history, label) in enumerate(zip(histories, labels)):
-        losses = [l for _, _, l in history]
+        losses = np.array([l for _, _, l in history])
+        losses = np.clip(losses, eps, None)  # avoid zeros for log scale
+
         # Smooth with moving average for readability
         k = 20
-        smoothed = np.convolve(losses, np.ones(k)/k, mode='valid')
-        color = colors[i % len(colors)]
-        ax.plot(losses, alpha=0.15, color=color, linewidth=0.5)
-        ax.plot(range(k-1, len(losses)), smoothed,
-                color=color, linewidth=2, label=label)
+        if len(losses) >= k:
+            smoothed = np.convolve(losses, np.ones(k)/k, mode='valid')
+            ax.plot(range(k-1, len(losses)), smoothed, color=colors[i % len(colors)], linewidth=2, label=label)
+
+        ax.plot(losses, alpha=0.15, color=colors[i % len(colors)], linewidth=0.5)
 
     ax.set_yscale('log')
     ax.set_xlabel('Step', color='#888888')
@@ -67,11 +70,11 @@ def plot_noise_comparison(sigma_levels, adam_losses, wavelet_losses, meta_losses
     x = np.arange(len(sigma_levels))
     width = 0.25
 
-    bars_adam    = ax.bar(x - width, adam_losses,    width,
+    bars_adam    = ax.bar(x - width, np.clip(adam_losses, 1e-8, None),    width,
                           label='Adam',         color='#00ff88', alpha=0.85)
-    bars_wavelet = ax.bar(x,         wavelet_losses, width,
+    bars_wavelet = ax.bar(x,         np.clip(wavelet_losses, 1e-8, None), width,
                           label='StaticWavelet', color='#ff6b35', alpha=0.85)
-    bars_meta    = ax.bar(x + width, meta_losses,    width,
+    bars_meta    = ax.bar(x + width, np.clip(meta_losses, 1e-8, None),    width,
                           label='MetaWavelet',  color='#4ecdc4', alpha=0.85)
 
     ax.set_xlabel('Noise Level (σ)', color='#888888')
@@ -86,7 +89,6 @@ def plot_noise_comparison(sigma_levels, adam_losses, wavelet_losses, meta_losses
     ax.spines['right'].set_visible(False)
     ax.legend(facecolor='#1a1a1a', edgecolor='#333333',
               labelcolor='#cccccc', fontsize=10)
-    ax.set_facecolor('#0f0f0f')
 
     path = os.path.join(OUTPUT_DIR, filename)
     plt.tight_layout()
@@ -113,8 +115,12 @@ def plot_gradient_signal(sig_x, coeffs_x, weight_vec, filename="gradient_signal.
         (axes[2], weight_vec,'#4ecdc4', 'Scale Weights'),
     ]
 
+    eps = 1e-8
     for ax, data, color, title in panels:
         ax.set_facecolor('#0f0f0f')
+        data = np.array(data)
+        if np.all(data == 0):
+            data += eps
         ax.bar(range(len(data)), data, color=color, alpha=0.8)
         ax.set_title(title, color='#ffffff', fontsize=11)
         ax.tick_params(colors='#888888')

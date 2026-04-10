@@ -130,6 +130,19 @@ def test_denoise_with_temporal_reduces_noise():
     assert err_clean < err_noisy, \
         f"Temporal denoising made things worse: {err_noisy:.3f} -> {err_clean:.3f}"
     print("test_denoise_with_temporal_reduces_noise passed")
+    
+def test_fd_runs_on_mnist():
+    """FD sketch initialises, updates, and denoises without error."""
+    from core.frequent_directions import FrequentDirections
+    import numpy as np
+    rng = np.random.default_rng(0)
+    fd = FrequentDirections(sketch_size=8, D=100)
+    for _ in range(20):
+        fd.update(rng.standard_normal(100))
+    assert fd.is_ready
+    clean = fd.denoise(rng.standard_normal(100))
+    assert clean.shape == (100,)
+    print("test_fd_runs_on_mnist passed")
 
 
 if __name__ == "__main__":
@@ -142,4 +155,5 @@ if __name__ == "__main__":
     test_n_components_must_be_leq_buffer_size()
     test_set_scale_weights_updates_correctly()
     test_denoise_with_temporal_reduces_noise()
+    test_fd_runs_on_mnist()
     print("\nAll PCA denoiser tests passed.")

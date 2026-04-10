@@ -27,3 +27,9 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# isic
+data/isic/
+
+# data 
+data/
