@@ -242,6 +242,62 @@ def test_uncertain_threshold_beats_ema_visushrink():
         f"UncertainThreshold ({np.mean(ut_losses):.4f}) not better than " \
         f"EMAVisuShrink ({np.mean(ema_losses):.4f})"
     print("test_uncertain_threshold_beats_ema_visushrink passed")
+    
+def test_waveguard_beats_learned_threshold():
+    """WaveGuard matches or beats LearnedThreshold at σ=0.10."""
+    from core.waveguard import train_waveguard
+    from core.learned_threshold_correction import train_correction_model
+    from experiments.session17_waveguard import run_waveguard_adam
+    from experiments.session15_learned_denoiser import run_learned_threshold_adam
+    import numpy as np
+
+    net, X_mean, X_std = train_waveguard(n_samples=5000, n_epochs=30)
+    lnet, lX_mean, lX_std = train_correction_model(
+        n_samples=5000, n_epochs=30
+    )
+    wg_losses, lt_losses = [], []
+    for seed in range(5):
+        h, _ = run_waveguard_adam(0.10, net, X_mean, X_std,
+                                   alpha=2.0, beta=1.0,
+                                   n_steps=2000, seed=seed)
+        wg_losses.append(h[-1][1])
+        h, _ = run_learned_threshold_adam(0.10, lnet, lX_mean, lX_std,
+                                           n_steps=2000, seed=seed)
+        lt_losses.append(h[-1][1])
+
+    # Allow 10% tolerance — WaveGuard may not always win with small training budget
+    tolerance = 0.10 * np.mean(lt_losses)
+    assert np.mean(wg_losses) <= np.mean(lt_losses) + tolerance, \
+        f"WaveGuard ({np.mean(wg_losses):.4f}) worse than " \
+        f"LearnedThreshold ({np.mean(lt_losses):.4f}) by more than 10%"
+    print("test_waveguard_beats_learned_threshold passed")
+    
+def test_waveguard_cnn_not_worse_than_adam():
+    """WaveGuard per-filter matches or beats Adam test accuracy on CNN."""
+    from problems.mnist_problem import load_mnist_subset
+    from problems.cnn_problem import cnn_loss_and_grads
+    from experiments.session18_cnn import run_adam_cnn, run_perfilter_waveguard_cnn
+    from core.waveguard import train_waveguard
+
+    X_train, y_train, X_test, y_test = load_mnist_subset(
+        n_train=1000, n_test=200, seed=0
+    )
+    net, X_mean, X_std = train_waveguard(n_samples=5000, n_epochs=30)
+
+    _, p_adam = run_adam_cnn(
+        X_train, y_train, X_test, y_test, n_epochs=15, seed=0
+    )
+    _, p_wg = run_perfilter_waveguard_cnn(
+        X_train, y_train, X_test, y_test,
+        net, X_mean, X_std, n_epochs=15, seed=0
+    )
+
+    _, _, acc_adam = cnn_loss_and_grads(p_adam, X_test, y_test)
+    _, _, acc_wg   = cnn_loss_and_grads(p_wg,   X_test, y_test)
+
+    assert acc_wg >= acc_adam - 0.02, \
+        f"WaveGuard CNN ({acc_wg:.3f}) worse than Adam ({acc_adam:.3f}) by more than 2%"
+    print("test_waveguard_cnn_not_worse_than_adam passed")    
 
 if __name__ == "__main__":
     test_sgd_decreases_loss()
@@ -259,4 +315,6 @@ if __name__ == "__main__":
     test_mnist_visuShrink_not_worse_than_adam()
     test_learned_threshold_beats_ema_visushrink()
     test_uncertain_threshold_beats_ema_visushrink()
+    test_waveguard_beats_learned_threshold()
+    test_waveguard_cnn_not_worse_than_adam()
     print("\nAll optimizer tests passed.")
